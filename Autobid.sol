@@ -3,13 +3,15 @@ pragma solidity ^0.4.18;
 contract Token {
   function transfer(address to, uint256 value) returns (bool success);
   function transferFrom(address from, address to, uint256 value) returns (bool success);
+  function balanceOf(address) constant returns (uint256) { }
 }
 
 /*************************************************************************\
  *  Autobid: Automatic Bidirectional Distribution contract
  *
  *  Allows users to exchange ETH for tokens (and vice versa) at a 
- *  predefined rate until an expiration blockheight is reached
+ *  predefined rate until an expiration timestamp is reached or the
+ *  contract token supply is fully depleted
  *
  *  Note: users must go through the approve() -> redeemTokens() process
  *  in order to successfully convert their token balances back to ETH
@@ -20,10 +22,11 @@ contract Autobid {
   /*************\
    *  Storage  *
   \*************/
-  address public owner;         // account with access to contract balance after expiration
+  address public admin;         // account with access to contract balance after expiration
   address public token;         // the token address
   uint public exchangeRate;     // number of tokens per ETH
-  uint public expirationBlock;  // block number at which the contract expires
+  uint public expirationTime;   // epoch timestamp at which the contract expires
+  bool public active;           // whether contract is still active (false after expiration)
 
   /************\
    *  Events  *
@@ -35,17 +38,21 @@ contract Autobid {
    *  Modifiers
   \**************/
   modifier autobidActive() {
-    require(block.number < expirationBlock);
+    // Check active variable
+    require(active);
+
+    // Also check current timestamp (edge condition sanity check)
+    require(now < expirationTime);
     _;
   }
 
   modifier autobidExpired() {
-    require(block.number >= expirationBlock);
+    require(!active);
     _;
   }
 
-  modifier onlyOwner() {
-    require(msg.sender == owner);
+  modifier onlyAdmin() {
+    require(msg.sender == admin);
     _;
   }
 
@@ -53,17 +60,18 @@ contract Autobid {
    *  Public functions
    *********************************************************************************\
    *  @dev Constructor
-   *  @param _owner Account with access to contract balance after expiration
+   *  @param _admin Account with access to contract balance after expiration
    *  @param _token Token recognized by autobid contract
    *  @param _exchangeRate Number of tokens granted per ETH sent
-   *  @param _expirationBlock Blockheight at which contract expires
+   *  @param _expirationTime Epoch time at which contract expires
    *
   \*********************************************************************************/
-  function Autobid(address _owner, address _token, uint _exchangeRate, uint _expirationBlock) {
-    owner = _owner;
+  function Autobid(address _admin, address _token, uint _exchangeRate, uint _expirationTime) {
+    admin = _admin;
     token = _token;
     exchangeRate = _exchangeRate;
-    expirationBlock = _expirationBlock;
+    expirationTime = _expirationTime;
+    active = true;
   }
 
   /********************************************\
@@ -76,6 +84,9 @@ contract Autobid {
 
     // Ensure that sender receives their tokens
     require(Token(token).transfer(msg.sender, tokenQuantity));
+
+    // Check if contract has now expired (i.e. is empty)
+    expirationCheck();
 
     // Fire TokenClaim event
     TokenClaim(msg.sender, msg.value, tokenQuantity);
@@ -99,12 +110,29 @@ contract Autobid {
     Redemption(msg.sender, amount, redemptionValue);
   }
 
+  /**************************************************************\
+   *  @dev Expires contract if any expiration criteria is met
+   *  (declared as public function to allow direct manual call)
+  \**************************************************************/
+  function expirationCheck() public {
+    // If expirationTime has been passed, contract expires
+    if (now > expirationTime) {
+      active = false;
+    }
+
+    // If the contract's token supply is depleted, it expires
+    uint remainingTokenSupply = Token(token).balanceOf(this);
+    if (remainingTokenSupply < exchangeRate) {
+      active = false;
+    }
+  }
+
   /*****************************************************\
    *  @dev Withdraw function (ETH)
    *  @param amount Quantity of ETH (in wei) withdrawn
-   *  Owner can only withdraw after contract expires
+   *  Admin can only withdraw after contract expires
   \*****************************************************/
-  function ownerWithdraw(uint amount) public autobidExpired onlyOwner {
+  function adminWithdraw(uint amount) public autobidExpired onlyAdmin {
     // Send ETH
     msg.sender.transfer(amount);
 
@@ -115,9 +143,9 @@ contract Autobid {
   /********************************************************\
    *  @dev Withdraw function (tokens)
    *  @param amount Quantity of tokens withdrawn
-   *  Owner can only access tokens after contract expires
+   *  Admin can only access tokens after contract expires
   \********************************************************/
-  function ownerWithdrawTokens(uint amount) public autobidExpired onlyOwner {
+  function adminWithdrawTokens(uint amount) public autobidExpired onlyAdmin {
     // Send tokens
     require(Token(token).transfer(msg.sender, amount));
 
