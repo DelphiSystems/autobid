@@ -1,9 +1,9 @@
 pragma solidity ^0.4.18;
 
 contract Token {
-  function transfer(address to, uint256 value) returns (bool success);
-  function transferFrom(address from, address to, uint256 value) returns (bool success);
-  function balanceOf(address) constant returns (uint256) { }
+  function transfer(address to, uint256 value) public returns (bool success);
+  function transferFrom(address from, address to, uint256 value) public returns (bool success);
+  function balanceOf(address _owner) public constant returns (uint256 balance);
 }
 
 /*************************************************************************\
@@ -66,7 +66,7 @@ contract Autobid {
    *  @param _expirationTime Epoch time at which contract expires
    *
   \*********************************************************************************/
-  function Autobid(address _admin, address _token, uint _exchangeRate, uint _expirationTime) {
+  function Autobid(address _admin, address _token, uint _exchangeRate, uint _expirationTime) public {
     admin = _admin;
     token = _token;
     exchangeRate = _exchangeRate;
