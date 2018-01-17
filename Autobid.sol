@@ -31,7 +31,7 @@ contract Autobid {
   /************\
    *  Events  *
   \************/
-  event TokenClaim(address claimant, uint ethDeposited, uint tokensGranted);
+  event TokenClaim(address tokenContract, address claimant, uint ethDeposited, uint tokensGranted);
   event Redemption(address redeemer, uint tokensDeposited, uint redemptionAmount);
 
   /**************\
@@ -89,7 +89,7 @@ contract Autobid {
     expirationCheck();
 
     // Fire TokenClaim event
-    TokenClaim(msg.sender, msg.value, tokenQuantity);
+    TokenClaim(token, msg.sender, msg.value, tokenQuantity);
   }
 
   /******************************************************\
@@ -150,6 +150,20 @@ contract Autobid {
     require(Token(token).transfer(msg.sender, amount));
 
     // Fire TokenClaim event
-    TokenClaim(msg.sender, 0, amount);
+    TokenClaim(token, msg.sender, 0, amount);
+  }
+
+  /********************************************************\
+   *  @dev Withdraw function (for miscellaneous tokens)
+   *  @param tokenContract Address of the token contract
+   *  @param amount Quantity of tokens withdrawn
+   *  Admin can only access tokens after contract expires
+  \********************************************************/
+  function adminWithdrawMiscTokens(address tokenContract, uint amount) public autobidExpired onlyAdmin {
+    // Send tokens
+    require(Token(tokenContract).transfer(msg.sender, amount));
+
+    // Fire TokenClaim event
+    TokenClaim(tokenContract, msg.sender, 0, amount);
   }
 }
